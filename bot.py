@@ -36,8 +36,9 @@ def _size(equity, atr_val, price, buying_power):
     if stop_dist <= 0 or price <= 0:
         return 0.0, 0.0
     qty = (equity * config.RISK_PERCENT) / stop_dist
-    qty = min(qty, (buying_power * 0.98) / price,
-              config.MAX_POSITION_NOTIONAL / price)
+    notional_cap = min(config.MAX_POSITION_NOTIONAL,
+                       config.MAX_POSITION_PCT * equity)   # % of equity guard
+    qty = min(qty, (buying_power * 0.98) / price, notional_cap / price)
     return _round_qty(qty), stop_dist
 
 

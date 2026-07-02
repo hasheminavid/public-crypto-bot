@@ -38,6 +38,9 @@ MAX_DAILY_LOSS = float(os.environ.get("MAX_DAILY_LOSS", "0.03"))
 PAPER_BALANCE  = float(os.environ.get("PAPER_BALANCE", "1000"))
 # absolute cap per position — this is a small STUDY account
 MAX_POSITION_NOTIONAL = float(os.environ.get("MAX_POSITION_NOTIONAL", "100"))
+# no single position may exceed this fraction of live equity (guards a $100
+# account: one trade can't swallow the account even if ATR is tight)
+MAX_POSITION_PCT = float(os.environ.get("MAX_POSITION_PCT", "0.40"))
 MIN_NOTIONAL   = float(os.environ.get("MIN_NOTIONAL", "2"))
 QTY_PRECISION  = int(os.environ.get("QTY_PRECISION", "8"))        # crypto fractional
 

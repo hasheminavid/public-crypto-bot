@@ -78,10 +78,16 @@ s = st.load(); bot.process_pending(s); s = st.load()
 check("3a stop = fill - dist = 1910", ("stop", "ETH", 0.05, 1910.0) in CALLS)
 check("3b entry recorded at real fill", s["positions"]["ETH"]["entry"] == 2010.0)
 
-# 4. $ cap sizing
-qty, sd = bot._size(equity=100000, atr_val=10, price=100, buying_power=100000)
-check("4a MAX_POSITION_NOTIONAL caps size",
-      qty * 100 <= config.MAX_POSITION_NOTIONAL + 1e-6)
+# 4. position cap sizing: min($100 abs, 40% equity)
+# tight ATR would want a huge position; cap must bind.
+qty, sd = bot._size(equity=100, atr_val=0.01, price=100, buying_power=100)
+notional = qty * 100
+check("4a position capped to 40% of $100 equity ($40)",
+      notional <= 0.40 * 100 + 1e-6 and notional > 0)
+# on a large account the absolute $100 cap binds instead
+qty2, _ = bot._size(equity=100000, atr_val=0.01, price=100, buying_power=100000)
+check("4b absolute $100 notional cap still binds on big account",
+      qty2 * 100 <= config.MAX_POSITION_NOTIONAL + 1e-6)
 
 # 5. breaker
 fresh_state(day=st.today_utc(), anchor=1100.0, anchor_source="public")
