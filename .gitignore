@@ -1,0 +1,10 @@
+.env
+public_bot_state.json
+public_bot_state.json.tmp
+reviews/
+bot_daily.log
+cache/
+__pycache__/
+*.pyc
+.venv/
+.claude/

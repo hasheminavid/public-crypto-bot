@@ -1,0 +1,5 @@
+publicdotcom-py
+yfinance
+pandas
+numpy
+python-dotenv
