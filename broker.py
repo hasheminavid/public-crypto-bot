@@ -70,6 +70,69 @@ def daily_bars(symbol, min_bars=260, include_forming=False):
     return out if include_forming else _drop_forming(out)
 
 
+def _to_dt(ts):
+    """Normalise a bar timestamp (ISO string or datetime/pandas Timestamp) to an
+    aware UTC datetime."""
+    if isinstance(ts, str):
+        return _dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    try:
+        d = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+    except Exception:
+        d = _dt.datetime.fromisoformat(str(ts)[:19])
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=_dt.timezone.utc)
+    return d
+
+
+def _resample(raw, hours):
+    """Aggregate 1-hour bars into `hours`-hour UTC candles (OHLC), dropping the
+    current still-forming block. raw = [(ts,o,h,l,c),...] oldest first."""
+    if not raw:
+        return []
+    buckets, order = {}, []
+    for ts, o, h, l, c in raw:
+        d = _to_dt(ts)
+        key = (d.year, d.month, d.day, d.hour // hours)
+        if key not in buckets:
+            buckets[key] = [o, h, l, c]; order.append(key)
+        else:
+            bk = buckets[key]
+            bk[1] = max(bk[1], h); bk[2] = min(bk[2], l); bk[3] = c
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cur = (now.year, now.month, now.day, now.hour // hours)
+    out = []
+    for key in order:
+        if key == cur:
+            continue                     # drop the forming block
+        o, h, l, c = buckets[key]
+        ts = f"{key[0]:04d}-{key[1]:02d}-{key[2]:02d}T{key[3]*hours:02d}:00Z"
+        out.append((ts, o, h, l, c))
+    return out
+
+
+def intraday_bars(symbol, hours=4):
+    """`hours`-hour candles (completed only), resampled from 1-hour data. Used by
+    the intraday trend-break exit. Public offers 1h/1d only, so 4h is built here."""
+    if has_key():
+        from public_api_sdk import BarPeriod, BarAggregation, InstrumentType
+        resp = _get_client().get_bars(symbol, BarPeriod.MONTH,
+                                      aggregation=BarAggregation.ONE_HOUR,
+                                      instrument_type=InstrumentType.CRYPTO)
+        bars = resp.regular_market.bars if resp and resp.regular_market else []
+        raw = [(b.timestamp, float(b.open), float(b.high), float(b.low), float(b.close))
+               for b in bars]
+    else:
+        import yfinance as yf
+        df = yf.download(f"{symbol}-USD", period="1mo", interval="60m",
+                         auto_adjust=True, progress=False, threads=False)
+        import pandas as pd
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        raw = [(ix, float(r.Open), float(r.High), float(r.Low), float(r.Close))
+               for ix, r in df.iterrows()]
+    return _resample(raw, hours)
+
+
 def last_price(symbol):
     """Live last trade price (None offline — daily close is used instead)."""
     if not has_key():

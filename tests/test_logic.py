@@ -23,6 +23,7 @@ def fake_bars(sym, min_bars=260, include_forming=False):
 def make_broker(positions=None, orders=None, order_states=None, prices=None):
     CALLS.clear(); PRICES.clear(); PRICES.update(prices or {})
     broker.daily_bars = fake_bars
+    broker.intraday_bars = lambda sym, hours=4: [("t", 100, 101, 99, PRICES.get(sym, 100.0))]
     broker.last_price = lambda sym: PRICES.get(sym, 100.0)
     broker.positions = lambda: dict(positions or {})
     broker.open_orders = lambda: list(orders or [])
@@ -141,6 +142,49 @@ strategy.evaluate = lambda bars: {"action": "FLAT_NO_SETUP", "close": 125000.0,
 bot.run_once(force=True)
 check("8b stop never trails down", st.load()["positions"]["BTC"]["stop"] == new_stop)
 strategy.evaluate = _strat_eval
+
+# 9. intraday 4h-resample: two 4h blocks from 1h bars, forming block dropped
+import broker as _bk, datetime as _dtm
+now = _dtm.datetime.now(_dtm.timezone.utc)
+# build 1h bars spanning an already-completed 4h block (block A) fully in the past
+base = now.replace(minute=0, second=0, microsecond=0) - _dtm.timedelta(hours=12)
+base = base.replace(hour=(base.hour // 4) * 4)   # align to a 4h boundary
+raw = []
+for i in range(4):   # 4 one-hour bars => one complete 4h candle
+    ts = (base + _dtm.timedelta(hours=i)).isoformat().replace("+00:00", "Z")
+    raw.append((ts, 10.0+i, 20.0+i, 5.0+i, 12.0+i))
+res = _bk._resample(raw, 4)
+check("9a resample makes 1 candle", len(res) == 1)
+check("9b OHLC = open10 high(max23) low(min5) close(last15)",
+      res[0][1] == 10.0 and res[0][2] == 23.0 and res[0][3] == 5.0 and res[0][4] == 15.0)
+# current forming block must be dropped
+cur = [(now.isoformat().replace("+00:00","Z"), 1,2,0.5,1.5)]
+check("9c forming block dropped", _bk._resample(cur, 4) == [])
+
+# 10. intraday trend-break exit: 4h close below trend-buffer -> exit; above -> hold
+import strategy as _st
+_orig = strategy.evaluate
+strategy.evaluate = lambda bars: {"action": "FLAT_NO_SETUP", "close": 100000.0,
+                                  "sma_trend": 100000.0, "atr": 2000.0, "momentum": 1.0}
+# below: trend 100000, buffer 0.25*2000=500 => threshold 99500; 98000 < 99500 -> exit
+fresh_state(positions={"BTC": {"qty": 0.001, "entry": 100000, "stop": 95000,
+                               "take_profit": 110000, "stop_order_id": "stopX"}})
+make_broker(positions={"BTC": 0.001},
+            orders=[{"order_id": "stopX", "symbol": "BTC", "side": "SELL", "type": "STOP",
+                     "status": "NEW", "stop_price": 95000.0, "quantity": 0.001}])
+broker.intraday_bars = lambda sym, hours=4: [("t", 99000, 99000, 98000, 98000.0)]
+s = st.load(); bot.check_intraday_trend_exit(s); s = st.load()
+check("10a intraday break exits (cancel then sell)",
+      ("cancel", "stopX") in CALLS and any(c[0] == "sell" for c in CALLS)
+      and "BTC" not in s["positions"])
+# above threshold -> no action
+fresh_state(positions={"BTC": {"qty": 0.001, "entry": 100000, "stop": 95000,
+                               "take_profit": 110000, "stop_order_id": None}})
+make_broker(positions={"BTC": 0.001})
+broker.intraday_bars = lambda sym, hours=4: [("t", 100500, 101000, 100000, 100200.0)]
+s = st.load(); bot.check_intraday_trend_exit(s)
+check("10b 4h close above trend -> no exit", not any(c[0] == "sell" for c in CALLS))
+strategy.evaluate = _orig
 
 print()
 sys.exit(1 if fails else 0)

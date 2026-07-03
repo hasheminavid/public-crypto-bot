@@ -14,7 +14,13 @@ Same safety architecture as `public-mr-bot`, adapted for a 24/7 market.
 ## The rules (deterministic — no LLM in the trading loop)
 - Universe: `BTC, ETH` (liquid majors only)
 - Entry: daily close > SMA(TREND_SMA, 100) AND close > close 30 bars ago (uptrend + positive momentum)
-- Exit: daily close < SMA(TREND_SMA) (trend break), or a TRAILING protective stop (entry − 3×ATR, ratcheted up as the trend runs)
+- Exit: daily close < SMA(TREND_SMA) (trend break); OR a faster **intraday
+  exit** — every 5-min poll, if the latest completed 4-hour candle closes below
+  the trend line (minus a 0.25×ATR buffer), it exits without waiting for the
+  daily close; OR a TRAILING protective stop (entry − 3×ATR, ratcheted up)
+- Asymmetric by design: entries are slow & daily-confirmed (noise-filtered),
+  exits can fire intraday (fast protection). 4-hour candles are resampled from
+  Public's 1-hour data (Public offers 1h/1d only)
 - Stops: broker-side STOP (GTD 30d) attempted first; if Public rejects STOP for
   crypto, the bot enforces the stop itself on every 5-minute poll via live quotes
 - 24/7: no market-hours windows; one strategy pass per completed UTC daily bar;

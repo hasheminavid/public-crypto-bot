@@ -176,6 +176,44 @@ def check_bot_stops(s):
             alert(f"{sym}: bot-enforced stop exit {pos['qty']} @~{px:.2f}")
 
 
+# --------------- intraday trend-break exit (24/7: faster than daily close) ---
+def check_intraday_trend_exit(s):
+    """If a held position's latest completed INTRADAY_TF_HOURS candle closes
+    below the daily trend line (minus INTRADAY_BUFFER_ATR*ATR), exit now rather
+    than waiting for the daily close. Asymmetric: entries stay slow/daily; exits
+    can fire intraday. Never raises."""
+    if not config.INTRADAY_EXIT or not s.get("positions"):
+        return
+    for sym in list(s["positions"]):
+        pos = s["positions"][sym]
+        try:
+            r = strategy.evaluate(broker.daily_bars(sym))
+            trend = r.get("sma_trend"); atr_now = r.get("atr") or 0.0
+            if trend is None or (isinstance(trend, float) and trend != trend):
+                continue
+            ib = broker.intraday_bars(sym, config.INTRADAY_TF_HOURS)
+            if not ib:
+                continue
+            last_close = ib[-1][4]
+            if last_close < trend - config.INTRADAY_BUFFER_ATR * atr_now:
+                if pos.get("stop_order_id"):
+                    try:
+                        broker.cancel_order(pos["stop_order_id"])
+                    except Exception as e:
+                        alert(f"{sym}: intraday exit — stop cancel failed ({e}); "
+                              f"NOT selling, retry next poll")
+                        continue
+                broker.market_sell(sym, pos["qty"], last_close,
+                                   reason=f"intraday trend break "
+                                          f"({config.INTRADAY_TF_HOURS}h close < SMA)")
+                st.record_exit(s, sym, last_close, "intraday_trend_break")
+                alert(f"{sym}: intraday trend-break exit {pos['qty']} @~{last_close:.2f} "
+                      f"({config.INTRADAY_TF_HOURS}h close {last_close:.2f} < "
+                      f"trend {trend:.2f})")
+        except Exception as e:
+            log(f"{sym}: intraday exit check skipped ({e})")
+
+
 # --------------- main cycle ---------------
 def run_once(force=False):
     s = st.load()
@@ -186,6 +224,7 @@ def run_once(force=False):
     equity = acct["equity"]; bp = acct["buying_power"]
     breaker_ok = _breaker_ok(s, equity, acct["source"])
     check_bot_stops(s)
+    check_intraday_trend_exit(s)  # faster, softer trend-break exit
 
     # daily pass: once per new completed UTC bar
     ref = broker.daily_bars(config.SYMBOLS[0])

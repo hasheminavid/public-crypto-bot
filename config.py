@@ -43,6 +43,14 @@ MAX_POSITION_PCT = float(os.environ.get("MAX_POSITION_PCT", "0.40"))
 MIN_NOTIONAL   = float(os.environ.get("MIN_NOTIONAL", "2"))
 QTY_PRECISION  = int(os.environ.get("QTY_PRECISION", "8"))        # crypto fractional
 
+# --- intraday trend-break exit (asymmetric: slow daily entries, fast exits) ---
+# Every poll, if a held position's latest completed INTRADAY_TF_HOURS candle
+# closes below the daily trend line (minus a small ATR buffer to avoid whipsaw),
+# exit now instead of waiting for the daily close. Entries stay daily/confirmed.
+INTRADAY_EXIT       = os.environ.get("INTRADAY_EXIT", "true").lower() != "false"
+INTRADAY_TF_HOURS   = int(os.environ.get("INTRADAY_TF_HOURS", "4"))    # 4h candles
+INTRADAY_BUFFER_ATR = float(os.environ.get("INTRADAY_BUFFER_ATR", "0.25"))
+
 # --- runtime (24/7 market: poll fast enough for the bot-side stop) ---
 POLL_SECONDS   = int(os.environ.get("POLL_SECONDS", "300"))       # 5 min
 STATE_DIR      = os.environ.get("STATE_DIR", ".")
