@@ -110,5 +110,37 @@ order = [c[0] for c in CALLS if c[0] in ("cancel", "sell")]
 check("6a cancel before sell", order[:2] == ["cancel", "sell"])
 strategy.evaluate = orig
 
+# 7. trend-following evaluate: uptrend+momentum -> BUY; below trend -> EXIT
+import strategy as _strat
+# rising series: last close well above SMA100 and above 30-bars-ago
+rising = [(f"d{i}", 100+i, 100+i, 100+i, 100.0+i) for i in range(200)]
+res_up = _strat.evaluate(rising)
+check("7a rising trend -> BUY", res_up.get("action") == "BUY" and res_up["momentum"] > 0)
+# falling series: last close below SMA100
+falling = [(f"d{i}", 300-i, 300-i, 300-i, 300.0-i) for i in range(200)]
+res_dn = _strat.evaluate(falling)
+check("7b downtrend -> EXIT", res_dn.get("action") == "EXIT")
+
+# 8. trailing stop ratchets UP but never down (via a live run_once daily pass)
+fresh_state(positions={"BTC": {"qty": 0.001, "entry": 100000, "stop": 90000,
+                               "take_profit": 110000, "stop_order_id": None}})
+make_broker(positions={"BTC": 0.001}, prices={"BTC": 130000.0})
+# price high, in-trend (no exit): evaluate returns FLAT_NO_SETUP w/ close & atr
+_strat_eval = strategy.evaluate
+strategy.evaluate = lambda bars: {"action": "FLAT_NO_SETUP", "close": 130000.0,
+                                  "atr": 2000.0, "momentum": 5000.0}
+import config as _cfg
+bot.run_once(force=True)
+new_stop = st.load()["positions"]["BTC"]["stop"]
+check("8a stop ratcheted up (130000 - 3*2000 = 124000)", abs(new_stop - 124000.0) < 1e-6)
+# now a lower price must NOT lower the stop
+make_broker(positions={"BTC": 0.001}, prices={"BTC": 125000.0})
+s2 = st.load(); s2["last_bar"] = None; st.save(s2)
+strategy.evaluate = lambda bars: {"action": "FLAT_NO_SETUP", "close": 125000.0,
+                                  "atr": 2000.0, "momentum": 3000.0}
+bot.run_once(force=True)
+check("8b stop never trails down", st.load()["positions"]["BTC"]["stop"] == new_stop)
+strategy.evaluate = _strat_eval
+
 print()
 sys.exit(1 if fails else 0)

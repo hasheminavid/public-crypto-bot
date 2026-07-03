@@ -21,12 +21,11 @@ DRY_RUN = os.environ.get("DRY_RUN", "true").lower() != "false"
 SYMBOLS = [s.strip().upper() for s in
            os.environ.get("SYMBOLS", "BTC,ETH").split(",") if s.strip()]
 
-# --- strategy (RSI(2) mean reversion, long-only — same tested family as the
-#     equity bot; on crypto it is an EXPERIMENT, not a proven edge) ---
-MR_RSI_PERIOD = int(os.environ.get("MR_RSI_PERIOD", "2"))
-MR_RSI_BUY    = float(os.environ.get("MR_RSI_BUY", "10"))
-MR_TREND_SMA  = int(os.environ.get("MR_TREND_SMA", "200"))
-MR_EXIT_SMA   = int(os.environ.get("MR_EXIT_SMA", "5"))
+# --- strategy (TREND-FOLLOWING / momentum, long-only) ---
+# Entry: close > SMA(TREND_SMA) and close > close[MOM_LOOKBACK ago]. Exit: close
+# < SMA(TREND_SMA). Low-parameter on purpose. EXPERIMENT, not a proven edge.
+TREND_SMA     = int(os.environ.get("TREND_SMA", "100"))   # trend filter
+MOM_LOOKBACK  = int(os.environ.get("MOM_LOOKBACK", "30"))  # momentum confirmation
 ATR_PERIOD    = int(os.environ.get("ATR_PERIOD", "14"))
 
 # --- risk / sizing (crypto = wider stops, smaller risk, hard $ cap) ---
@@ -61,11 +60,11 @@ MIN_TRADES_FOR_TUNING = int(os.environ.get("MIN_TRADES_FOR_TUNING", "30"))
 
 # --- hard bounds for the daily Claude review ---
 HARD_BOUNDS = {
-    "MR_RSI_BUY":   (5.0, 15.0),
-    "SL_ATR_MULT":  (2.0, 4.0),
-    "RISK_PERCENT": (0.001, 0.0075),
+    "TREND_SMA":     (50, 200),
+    "MOM_LOOKBACK":  (10, 60),
+    "SL_ATR_MULT":   (2.0, 5.0),
+    "RISK_PERCENT":  (0.001, 0.0075),
     "MAX_POSITIONS": (1, 3),
-    "MR_EXIT_SMA":  (3, 10),
 }
 
 # --- apply bounded overrides written by the daily review (params.json) ---

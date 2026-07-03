@@ -26,10 +26,13 @@ PARAMS_FILE = os.path.join(config.STATE_DIR, "params.json")
 REVIEW_HOUR_UTC = int(os.environ.get("REVIEW_HOUR_UTC", "21"))  # after US close
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
-PROMPT = """You are the daily reviewer for a small automated RSI(2) mean-reversion
-CRYPTO bot (BTC/ETH, daily UTC bars) trading a small STUDY account on Public.com.
-Crypto backtests in this project's history showed trend strategies were overfit
-traps; treat every result with suspicion and favour holding parameters. Your job is to protect discipline,
+PROMPT = """You are the daily reviewer for a small automated TREND-FOLLOWING
+(momentum) CRYPTO bot (BTC/ETH, daily UTC bars) trading a small STUDY account on
+Public.com. Entry: close > SMA(TREND_SMA) and positive momentum; exit: close <
+SMA(TREND_SMA); a trailing ATR stop caps give-back. Trend strategies are
+REGIME-DEPENDENT and overfit easily (this project's backtests found crypto trend
+rules collapsed out-of-sample); treat every result with suspicion, expect
+whipsaws in chop, and strongly favour holding parameters. Your job is to protect discipline,
 not to chase performance. Respond ONLY with JSON, no other text:
 {"action":"hold"|"adjust","changes":{"PARAM":value,...},"reason":"<max 300 chars>"}
 

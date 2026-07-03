@@ -1,6 +1,6 @@
-# Public.com CRYPTO mean-reversion bot — small STUDY account
+# Public.com CRYPTO trend-following bot — small STUDY account
 
-RSI(2) mean reversion on daily UTC bars for BTC/ETH via Public.com's crypto API.
+Trend-following (momentum) on daily UTC bars for BTC/ETH via Public.com's crypto API.
 Same safety architecture as `public-mr-bot`, adapted for a 24/7 market.
 
 ## ⚠️ Read first
@@ -13,8 +13,8 @@ Same safety architecture as `public-mr-bot`, adapted for a 24/7 market.
 
 ## The rules (deterministic — no LLM in the trading loop)
 - Universe: `BTC, ETH` (liquid majors only)
-- Entry: daily close > SMA200 AND RSI(2) < 10 (oversold dip in an uptrend)
-- Exit: daily close > SMA5 (mean touch), or protective stop at entry − 3×ATR(14)
+- Entry: daily close > SMA(TREND_SMA, 100) AND close > close 30 bars ago (uptrend + positive momentum)
+- Exit: daily close < SMA(TREND_SMA) (trend break), or a TRAILING protective stop (entry − 3×ATR, ratcheted up as the trend runs)
 - Stops: broker-side STOP (GTD 30d) attempted first; if Public rejects STOP for
   crypto, the bot enforces the stop itself on every 5-minute poll via live quotes
 - 24/7: no market-hours windows; one strategy pass per completed UTC daily bar;

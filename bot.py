@@ -198,7 +198,7 @@ def run_once(force=False):
     log(f"daily pass | equity ${equity:,.2f} ({acct['source']}) | "
         f"holdings {list(s['positions'])} | breaker {'OK' if breaker_ok else 'HALTED'}")
 
-    # exits (mean-touch on completed daily bar)
+    # exits (trend break on completed daily bar) + trailing-stop ratchet
     for sym in list(s["positions"]):
         pos = s["positions"][sym]
         r = strategy.evaluate(broker.daily_bars(sym))
@@ -213,9 +213,30 @@ def run_once(force=False):
                     alert(f"{sym}: cancel of resting stop failed ({e}) — NOT selling "
                           f"to avoid a double-sell; retry next pass.")
                     continue
-            broker.market_sell(sym, pos["qty"], close, reason="mean-touch (close>SMA5)")
-            st.record_exit(s, sym, close, "mean_touch")
-            alert(f"{sym}: mean-touch exit {pos['qty']} @~{close:.2f}")
+            broker.market_sell(sym, pos["qty"], close, reason="trend break (close<SMA)")
+            st.record_exit(s, sym, close, "trend_break")
+            alert(f"{sym}: trend-break exit {pos['qty']} @~{close:.2f}")
+            continue
+        # still in the trend: ratchet the protective stop UP (never down) so
+        # winners are let run but give-back is capped. Trend-following core.
+        atr_now = r.get("atr") or 0.0
+        if atr_now > 0:
+            new_stop = close - config.SL_ATR_MULT * atr_now
+            if new_stop > pos.get("stop", 0.0):
+                old_stop = pos.get("stop", 0.0)
+                pos["stop"] = new_stop
+                st.save(s)
+                if pos.get("stop_order_id"):     # move the resting broker stop up
+                    try:
+                        broker.cancel_order(pos["stop_order_id"])
+                        rr = broker.place_protective_stop(sym, pos["qty"], new_stop)
+                        pos["stop_order_id"] = rr.get("order_id")
+                        st.save(s)
+                    except Exception as e:
+                        pos["stop_order_id"] = None; st.save(s)
+                        alert(f"{sym}: trailing-stop re-place failed ({e}); bot "
+                              f"enforces at {new_stop:.2f} on every poll")
+                log(f"{sym}: trailing stop {old_stop:.2f} -> {new_stop:.2f}")
 
     # entries
     open_count = len(s["positions"]) + len(s.get("pending_entries", {}))
@@ -234,8 +255,8 @@ def run_once(force=False):
         if qty <= 0 or notional < config.MIN_NOTIONAL:
             log(f"{sym}: BUY signal but size too small (${notional:.2f}); skip")
             continue
-        log(f"{sym}: BUY setup (rsi2 {r['rsi']:.0f}) -> {qty} (~${notional:.2f}, "
-            f"cap ${config.MAX_POSITION_NOTIONAL:.0f})")
+        log(f"{sym}: BUY setup (trend up, mom {r['momentum']:+.2f}) -> {qty} "
+            f"(~${notional:.2f}, cap ${config.MAX_POSITION_NOTIONAL:.0f})")
         res = broker.market_buy(sym, qty, entry)
         s.setdefault("pending_entries", {})[res["order_id"]] = {
             "symbol": sym, "qty": qty, "signal_close": entry,

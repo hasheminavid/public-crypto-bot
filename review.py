@@ -92,7 +92,9 @@ def main():
             flags.append(f"win rate {winrate:.0f}% but only {len(sells)} closed trades "
                          f"(<{config.MIN_TRADES_FOR_TUNING}) — too few to tune on. HOLD parameters.")
     if not trades:
-        flags.append("no trades yet — RSI(2)<10 dips in uptrends are rare by design; "
+        flags.append("no trades yet — trend-following only holds when price is above "
+                     "SMA(trend) with positive momentum; flat/absent in downtrends "
+                     "and chop by design. Do NOT loosen the trend filter to force "
                      "this is normal for weeks at a time. Do NOT loosen the entry to "
                      "manufacture activity; that is how edges die.")
     if s.get("halted"):
