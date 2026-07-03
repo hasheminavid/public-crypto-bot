@@ -186,5 +186,37 @@ s = st.load(); bot.check_intraday_trend_exit(s)
 check("10b 4h close above trend -> no exit", not any(c[0] == "sell" for c in CALLS))
 strategy.evaluate = _orig
 
+# 11. intraday-exit monitoring + buffer tuning in the review
+import review as _rev, config as _cfg
+_cfg.MIN_TRADES_FOR_TUNING = 1          # open the gate for the test
+make_broker(prices={"BTC": 100.0})      # broker.account_summary/daily_bars mocked
+# build 4 intraday exits, 3 of them re-entered within 5 days (whipsaws)
+trades = []
+base = 1
+def _mk(day, side, sym, reason=None, pnl=0.0):
+    d = f"2026-02-{day:02d}T00:00:00+00:00"
+    e = {"t": d, "side": side, "symbol": sym, "qty": 0.001, "price": 100.0}
+    if reason: e["reason"] = reason
+    if side == "SELL": e["pnl"] = pnl
+    return e
+for k in range(3):                      # exit then re-enter 2 days later -> whipsaw
+    trades.append(_mk(1+k*4, "SELL", "BTC", "intraday_trend_break", -1.0))
+    trades.append(_mk(3+k*4, "BUY", "BTC"))
+trades.append(_mk(20, "SELL", "BTC", "intraday_trend_break", -1.0))  # 4th, no re-entry
+fresh_state()
+s = st.load(); s["trades"] = trades; st.save(s)
+_rev._btc_return = lambda since: None   # skip benchmark network path
+_rev.main()
+day = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d")
+report = open(os.path.join(tmp, "reviews", f"review_{day}.md")).read()
+check("11a report shows intraday exit monitoring", "intraday-4h exits:" in report and "whipsawed back within 5d: 3/4" in report)
+check("11b review recommends WIDENING the buffer", "WIDEN INTRADAY_BUFFER_ATR" in report)
+check("11c INTRADAY_BUFFER_ATR is review-tunable", "INTRADAY_BUFFER_ATR" in config.HARD_BOUNDS)
+# override applies + clamps
+import json as _json
+_json.dump({"params": {"INTRADAY_BUFFER_ATR": 5.0}}, open(os.path.join(tmp, "params.json"), "w"))
+import importlib; importlib.reload(config)
+check("11d params.json override clamps buffer to bound 1.5", config.INTRADAY_BUFFER_ATR == 1.5)
+
 print()
 sys.exit(1 if fails else 0)

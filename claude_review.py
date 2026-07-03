@@ -32,7 +32,12 @@ Public.com. Entry: close > SMA(TREND_SMA) and positive momentum; exit: close <
 SMA(TREND_SMA); a trailing ATR stop caps give-back. Trend strategies are
 REGIME-DEPENDENT and overfit easily (this project's backtests found crypto trend
 rules collapsed out-of-sample); treat every result with suspicion, expect
-whipsaws in chop, and strongly favour holding parameters. Your job is to protect discipline,
+whipsaws in chop, and strongly favour holding parameters.
+The report includes intraday-4h exit monitoring (count, win rate, P&L, and how
+often those exits WHIPSAWED — i.e. were re-entered within 5 days). If intraday
+exits whipsaw a lot, they are firing too eagerly: WIDEN INTRADAY_BUFFER_ATR.
+If they never fire yet the bot gives back a lot before the daily exit, you may
+tighten it toward 0. Change it by at most 0.25 at a time, only past the gate. Your job is to protect discipline,
 not to chase performance. Respond ONLY with JSON, no other text:
 {"action":"hold"|"adjust","changes":{"PARAM":value,...},"reason":"<max 300 chars>"}
 

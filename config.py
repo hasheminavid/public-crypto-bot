@@ -68,11 +68,12 @@ MIN_TRADES_FOR_TUNING = int(os.environ.get("MIN_TRADES_FOR_TUNING", "30"))
 
 # --- hard bounds for the daily Claude review ---
 HARD_BOUNDS = {
-    "TREND_SMA":     (50, 200),
-    "MOM_LOOKBACK":  (10, 60),
-    "SL_ATR_MULT":   (2.0, 5.0),
-    "RISK_PERCENT":  (0.001, 0.0075),
-    "MAX_POSITIONS": (1, 3),
+    "TREND_SMA":          (50, 200),
+    "MOM_LOOKBACK":       (10, 60),
+    "SL_ATR_MULT":        (2.0, 5.0),
+    "RISK_PERCENT":       (0.001, 0.0075),
+    "MAX_POSITIONS":      (1, 3),
+    "INTRADAY_BUFFER_ATR": (0.0, 1.5),   # intraday-exit sensitivity (review-tunable)
 }
 
 # --- apply bounded overrides written by the daily review (params.json) ---

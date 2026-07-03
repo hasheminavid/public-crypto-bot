@@ -61,6 +61,31 @@ def main():
     stops = [t for t in sells if t.get("reason") == "stop"]
     winrate = (len(wins) / len(sells) * 100) if sells else 0.0
 
+    # --- intraday (4h) exit monitoring ---
+    intraday = [t for t in sells if t.get("reason") == "intraday_trend_break"]
+    trendbreak = [t for t in sells if t.get("reason") == "trend_break"]
+    intr_wins = [t for t in intraday if t.get("pnl", 0) > 0]
+    intr_wr = (len(intr_wins) / len(intraday) * 100) if intraday else 0.0
+    intr_pnl = sum(t.get("pnl", 0.0) for t in intraday)
+    # whipsaw = an intraday exit that was RE-ENTERED (same symbol) within 5 days
+    # -> strong evidence the 4h break was false and the exit fired too eagerly.
+    import datetime as _d
+    def _pt(x):
+        try:
+            return _d.datetime.fromisoformat(x)
+        except Exception:
+            return None
+    whips = 0
+    for i, t in enumerate(trades):
+        if t.get("side") == "SELL" and t.get("reason") == "intraday_trend_break":
+            et = _pt(t.get("t", "")); sym0 = t.get("symbol")
+            for u in trades[i + 1:]:
+                if u.get("side") == "BUY" and u.get("symbol") == sym0:
+                    bt = _pt(u.get("t", ""))
+                    if et and bt and 0 <= (bt - et).days <= 5:
+                        whips += 1
+                    break
+
     acct = _retry(broker.account_summary, what="account_summary")
     open_lines, unreal = [], 0.0
     for sym, p in s.get("positions", {}).items():
@@ -97,6 +122,21 @@ def main():
                      "and chop by design. Do NOT loosen the trend filter to force "
                      "this is normal for weeks at a time. Do NOT loosen the entry to "
                      "manufacture activity; that is how edges die.")
+    if enough and intraday:
+        share = len(intraday) / len(sells) * 100
+        if whips >= max(3, len(intraday) * 0.5):
+            flags.append(f"intraday-4h exits WHIPSAWED {whips}/{len(intraday)} times "
+                         f"(re-entered within 5d) — firing too eagerly on false breaks. "
+                         f"WIDEN INTRADAY_BUFFER_ATR {config.INTRADAY_BUFFER_ATR:.2f}->"
+                         f"{min(config.INTRADAY_BUFFER_ATR + 0.25, 1.5):.2f} (bounds [0.0, 1.5]).")
+        elif intr_wr < 35 and share > 40 and intr_pnl < 0:
+            flags.append(f"intraday-4h exits are {share:.0f}% of exits, {intr_wr:.0f}% win, "
+                         f"${intr_pnl:+.2f} — consider WIDENING INTRADAY_BUFFER_ATR "
+                         f"{config.INTRADAY_BUFFER_ATR:.2f}->"
+                         f"{min(config.INTRADAY_BUFFER_ATR + 0.25, 1.5):.2f} (bounds [0.0, 1.5]).")
+        elif whips == 0 and intr_pnl > 0 and intr_wr >= 55:
+            flags.append(f"intraday-4h exits protecting cleanly (0 whipsaws, {intr_wr:.0f}% win, "
+                         f"${intr_pnl:+.2f}); parameters look right — HOLD.")
     if s.get("halted"):
         flags.append("circuit breaker tripped today; review whether risk% is too high for account size.")
     if bench is not None and realized + unreal < 0 and bench > 0 and enough:
@@ -118,6 +158,11 @@ def main():
         f"equity ${acct['equity']:,.0f}",
         f"- realized P&L: ${realized:+.2f} over {len(sells)} closed trades "
         f"(win rate {winrate:.0f}%, {len(stops)} stopped out)",
+        f"- exit mix: {len(intraday)} intraday-4h, {len(trendbreak)} daily trend-break, "
+        f"{len(stops)} hard-stop",
+        f"- intraday-4h exits: win rate {intr_wr:.0f}%, P&L ${intr_pnl:+.2f}, "
+        f"whipsawed back within 5d: {whips}/{len(intraday)} "
+        f"(buffer {config.INTRADAY_BUFFER_ATR:.2f}xATR)",
         f"- open positions: {len(s.get('positions', {}))} | unrealized ${unreal:+.2f}",
         f"- combined P&L: ${realized + unreal:+.2f}"
         + (f" | BTC buy-hold since start {bench:+.1%}" if bench is not None else ""),
