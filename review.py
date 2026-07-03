@@ -5,11 +5,28 @@ Claude routine reads this file and proposes/applies the qualitative refinements.
     python review.py
 """
 import os
+import time
 from datetime import datetime, timezone
 
 import config
 import broker
 import state as st
+
+
+def _retry(fn, tries=3, delay=2.0, what="API call"):
+    """Call fn(), retrying on transient errors (a one-off broker 401/timeout)
+    before giving up. Returns fn() or re-raises the last error after `tries`."""
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            if i < tries - 1:
+                print(f"(review: {what} failed [{e}] — retry {i+1}/{tries-1} "
+                      f"in {delay:.0f}s)", flush=True)
+                time.sleep(delay)
+    raise last
 
 
 def _last_close(symbol):
@@ -44,7 +61,7 @@ def main():
     stops = [t for t in sells if t.get("reason") == "stop"]
     winrate = (len(wins) / len(sells) * 100) if sells else 0.0
 
-    acct = broker.account_summary()
+    acct = _retry(broker.account_summary, what="account_summary")
     open_lines, unreal = [], 0.0
     for sym, p in s.get("positions", {}).items():
         px = _last_close(sym)
